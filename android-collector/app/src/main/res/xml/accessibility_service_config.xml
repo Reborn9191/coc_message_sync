@@ -1,0 +1,8 @@
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowContentChanged|typeViewTextChanged|typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:packageNames="com.supercell.clashofclans"
+    android:notificationTimeout="300"
+    android:canRetrieveWindowContent="true"
+    android:description="读取部落聊天区域中可访问的文本并同步到服务端"
+    android:settingsActivity="com.example.coccollector.MainActivity" />

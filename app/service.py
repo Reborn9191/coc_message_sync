@@ -50,11 +50,15 @@ class DeliveryWorker:
         delivery_id = int(row["delivery_id"])
         attempts = int(row["attempts"]) + 1
         try:
-            if not self.settings.qq_group_id:
+            if (
+                not self.settings.qq_group_id
+                and not self.settings.dry_run
+                and self.settings.onebot_url
+            ):
                 raise RuntimeError("QQ_GROUP_ID is not configured")
             text = format_group_message(row["clan_id"], row["sender"], row["content"])
             await self.adapter.send_group_message(
-                QQMessage(group_id=self.settings.qq_group_id, text=text)
+                QQMessage(group_id=self.settings.qq_group_id or "dry-run", text=text)
             )
         except Exception as exc:  # keep the worker alive for transient QQ errors
             logger.warning("delivery %s failed (attempt %s): %s", delivery_id, attempts, exc)
@@ -68,4 +72,3 @@ class DeliveryWorker:
         else:
             self.db.mark_sent(delivery_id)
             logger.info("delivery %s sent", delivery_id)
-

@@ -49,5 +49,7 @@ class OneBotAdapter(QQAdapter):
 
 
 def format_group_message(clan_id: str, sender: str, content: str) -> str:
-    return f"[部落聊天 · {clan_id}]\n{sender}：{content}"
-
+    # Normalize excessive whitespace from OCR while preserving intentional
+    # line breaks in a player's message.
+    normalized = "\n".join(line.strip() for line in content.splitlines()).strip()
+    return f"[部落聊天 · {clan_id}]\n{sender}：{normalized}"

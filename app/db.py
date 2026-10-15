@@ -96,7 +96,7 @@ class Database:
         now = iso(datetime.now(timezone.utc))
         observed = iso(observed_at)
         with self.connect() as connection:
-            connection.execute(
+            message_cursor = connection.execute(
                 """
                 INSERT OR IGNORE INTO messages
                     (clan_id, sender, content, observed_at, source,
@@ -120,9 +120,7 @@ class Database:
             if row is None:
                 raise RuntimeError("message insert failed")
             message_id = int(row["id"])
-            inserted = connection.execute(
-                "SELECT changes() AS count"
-            ).fetchone()["count"] == 1
+            inserted = message_cursor.rowcount == 1
             if inserted:
                 connection.execute(
                     "INSERT INTO deliveries(message_id, next_attempt_at) VALUES (?, ?)",

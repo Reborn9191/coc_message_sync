@@ -26,6 +26,14 @@ class IncomingMessage(BaseModel):
             return value
         return str(value).strip()
 
+    @validator("content")
+    def reject_control_content(cls, value: str) -> str:
+        # Keep line breaks (they are useful in chat), but reject invisible
+        # control characters that can confuse QQ clients or log processors.
+        if any(ord(char) < 32 and char not in "\n\r\t" for char in value):
+            raise ValueError("content contains unsupported control characters")
+        return value
+
 
 class IngestResponse(BaseModel):
     message_id: int
@@ -37,4 +45,3 @@ class HealthResponse(BaseModel):
     status: str
     dry_run: bool
     qq_configured: bool
-
