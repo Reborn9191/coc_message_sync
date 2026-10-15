@@ -27,6 +27,7 @@ class Settings:
     max_attempts: int
     retry_base_seconds: int
     max_message_length: int
+    collector_rate_limit_per_minute: int
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -44,4 +45,7 @@ class Settings:
             max_attempts=int(os.getenv("MAX_ATTEMPTS", "8")),
             retry_base_seconds=int(os.getenv("RETRY_BASE_SECONDS", "2")),
             max_message_length=int(os.getenv("MAX_MESSAGE_LENGTH", "2000")),
+            collector_rate_limit_per_minute=int(
+                os.getenv("COLLECTOR_RATE_LIMIT_PER_MINUTE", "120")
+            ),
         )

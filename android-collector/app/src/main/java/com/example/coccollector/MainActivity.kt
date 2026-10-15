@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
+import android.text.InputType
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -25,6 +26,7 @@ class MainActivity : Activity() {
             hint = "采集 Token"
             setText(preferences.getString("collector_token", ""))
             setSingleLine(true)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
         val clan = EditText(this).apply {
             hint = "部落 ID 或名称"

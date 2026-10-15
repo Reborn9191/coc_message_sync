@@ -185,3 +185,38 @@ class Database:
                 "SELECT status, COUNT(*) AS count FROM deliveries GROUP BY status"
             ).fetchall()
         return {str(row["status"]): int(row["count"]) for row in rows}
+
+    def retry_failed(self, limit: int = 100) -> int:
+        """Move terminal failures back into the queue for an operator retry."""
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT id FROM deliveries WHERE status='failed' ORDER BY id LIMIT ?",
+                (limit,),
+            ).fetchall()
+            if not rows:
+                return 0
+            ids = [int(row["id"]) for row in rows]
+            placeholders = ",".join("?" for _ in ids)
+            connection.execute(
+                f"""
+                UPDATE deliveries
+                SET status='pending', next_attempt_at=?, last_error=NULL
+                WHERE id IN ({placeholders})
+                """,
+                (iso(datetime.now(timezone.utc)), *ids),
+            )
+            return len(ids)
+
+    def recent_messages(self, limit: int = 20) -> list[dict[str, object]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT m.id, m.clan_id, m.sender, m.content, m.observed_at,
+                       m.source, d.status, d.attempts, d.last_error, d.sent_at
+                FROM messages m
+                JOIN deliveries d ON d.message_id = m.id
+                ORDER BY m.id DESC LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]

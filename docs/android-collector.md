@@ -39,4 +39,6 @@ Content-Type: application/json
 4. 本地持久化最近一次已上报的消息，在网络断开时重试；收到 HTTP 202 后再推进本地游标。
 5. 使用 HTTPS 访问服务端，并把 Token 放在 Android Keystore 或受保护的配置中。
 
+服务端对每个来源 IP 有默认每分钟 120 条的限流。若设备频繁重试收到 429，应降低采集频率或调整 `COLLECTOR_RATE_LIMIT_PER_MINUTE`；不要通过并发请求绕过限流。
+
 服务端不会修改游戏客户端，也不会尝试把 QQ 消息写回游戏。正式部署前请征得部落成员同意，并确认游戏和 QQ 平台的使用规则。

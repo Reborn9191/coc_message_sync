@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">CoC 聊天同步采集器</string>
+    <string name="accessibility_description">读取部落聊天区域中可访问的文本并同步到服务端</string>
+</resources>
+

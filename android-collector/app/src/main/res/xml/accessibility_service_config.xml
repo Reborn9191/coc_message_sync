@@ -4,5 +4,5 @@
     android:packageNames="com.supercell.clashofclans"
     android:notificationTimeout="300"
     android:canRetrieveWindowContent="true"
-    android:description="读取部落聊天区域中可访问的文本并同步到服务端"
+    android:description="@string/accessibility_description"
     android:settingsActivity="com.example.coccollector.MainActivity" />

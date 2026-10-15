@@ -6,16 +6,24 @@ from datetime import datetime, timezone
 
 from .config import Settings
 from .db import Database
+from .metrics import RuntimeMetrics
 from .qq import QQAdapter, QQMessage, format_group_message
 
 logger = logging.getLogger(__name__)
 
 
 class DeliveryWorker:
-    def __init__(self, db: Database, adapter: QQAdapter, settings: Settings):
+    def __init__(
+        self,
+        db: Database,
+        adapter: QQAdapter,
+        settings: Settings,
+        metrics: RuntimeMetrics | None = None,
+    ):
         self.db = db
         self.adapter = adapter
         self.settings = settings
+        self.metrics = metrics
         self._wake = asyncio.Event()
         self._stop = asyncio.Event()
         self._task: asyncio.Task | None = None
@@ -61,6 +69,8 @@ class DeliveryWorker:
                 QQMessage(group_id=self.settings.qq_group_id or "dry-run", text=text)
             )
         except Exception as exc:  # keep the worker alive for transient QQ errors
+            if self.metrics:
+                self.metrics.delivery_failures += 1
             logger.warning("delivery %s failed (attempt %s): %s", delivery_id, attempts, exc)
             self.db.mark_failed(
                 delivery_id,
@@ -70,5 +80,7 @@ class DeliveryWorker:
                 retry_base_seconds=self.settings.retry_base_seconds,
             )
         else:
+            if self.metrics:
+                self.metrics.delivery_success += 1
             self.db.mark_sent(delivery_id)
             logger.info("delivery %s sent", delivery_id)
