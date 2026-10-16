@@ -14,7 +14,7 @@ from .config import Settings
 from .db import Database
 from .models import HealthResponse, IncomingMessage, IngestResponse, ReadyResponse
 from .metrics import RuntimeMetrics
-from .policy import blocked_term
+from .policy import blocked_term, clan_allowed
 from .qq import DryRunQQAdapter, OneBotAdapter
 from .service import DeliveryWorker
 
@@ -147,6 +147,8 @@ async def readyz() -> ReadyResponse:
     dependencies=[Depends(require_collector_token)],
 )
 async def ingest_message(payload: IncomingMessage) -> JSONResponse:
+    if not clan_allowed(payload.clan_id, settings.allowed_clan_ids):
+        raise HTTPException(status_code=403, detail="clan is not allowed")
     if len(payload.content) > settings.max_message_length:
         raise HTTPException(status_code=422, detail="content is too long")
     if blocked_term(payload.content, settings.blocked_terms):
@@ -186,8 +188,10 @@ async def outbox_status() -> dict[str, object]:
 
 
 @app.post("/api/v1/admin/sync", dependencies=[Depends(require_admin_token)])
-async def set_sync(enabled: bool = Query(...)) -> dict[str, object]:
+async def set_sync(request: Request, enabled: bool = Query(...)) -> dict[str, object]:
     await asyncio.to_thread(database.set_sync_enabled, enabled)
+    actor = request.client.host if request.client else "unknown"
+    await asyncio.to_thread(database.record_audit, "sync_toggle", actor, f"enabled={enabled}")
     if enabled:
         worker.notify()
     return {"sync_enabled": enabled}
@@ -195,18 +199,25 @@ async def set_sync(enabled: bool = Query(...)) -> dict[str, object]:
 
 @app.post("/api/v1/admin/maintenance/purge", dependencies=[Depends(require_admin_token)])
 async def purge_messages(
+    request: Request,
     retention_days: int | None = Query(default=None, ge=1, le=3650),
     limit: int = Query(default=1000, ge=1, le=10000),
 ) -> dict[str, int]:
     days = settings.retention_days if retention_days is None else retention_days
-    return {"deleted": await asyncio.to_thread(database.purge_old_messages, days, limit)}
+    deleted = await asyncio.to_thread(database.purge_old_messages, days, limit)
+    actor = request.client.host if request.client else "unknown"
+    await asyncio.to_thread(database.record_audit, "message_purge", actor, f"retention_days={days}; deleted={deleted}")
+    return {"deleted": deleted}
 
 
 @app.post("/api/v1/admin/outbox/retry", dependencies=[Depends(require_admin_token)])
 async def retry_failed(
+    request: Request,
     limit: int = Query(default=100, ge=1, le=1000),
 ) -> dict[str, int]:
     retried = await asyncio.to_thread(database.retry_failed, limit)
+    actor = request.client.host if request.client else "unknown"
+    await asyncio.to_thread(database.record_audit, "outbox_retry", actor, f"limit={limit}; retried={retried}")
     if retried:
         worker.notify()
     return {"retried": retried}
@@ -219,12 +230,27 @@ async def recent_messages(
     return {"messages": await asyncio.to_thread(database.recent_messages, limit)}
 
 
+@app.get("/api/v1/admin/outbox/failed", dependencies=[Depends(require_admin_token)])
+async def failed_outbox(
+    limit: int = Query(default=50, ge=1, le=100),
+) -> dict[str, object]:
+    return {"deliveries": await asyncio.to_thread(database.failed_deliveries, limit)}
+
+
+@app.get("/api/v1/admin/audit", dependencies=[Depends(require_admin_token)])
+async def audit_events(
+    limit: int = Query(default=50, ge=1, le=100),
+) -> dict[str, object]:
+    return {"events": await asyncio.to_thread(database.recent_audit, limit)}
+
+
 @app.get("/api/v1/admin/config", dependencies=[Depends(require_admin_token)])
 async def admin_config() -> dict[str, object]:
     return {
         "sync_enabled": await asyncio.to_thread(database.sync_enabled),
         "retention_days": settings.retention_days,
         "blocked_terms_configured": len(settings.blocked_terms),
+        "allowed_clans_configured": len(settings.allowed_clan_ids),
         "mode": "dry-run" if settings.dry_run else "onebot",
     }
 

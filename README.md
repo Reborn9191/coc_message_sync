@@ -103,7 +103,15 @@ QQ 机器人账号需要已经加入目标群；OneBot 适配器需要允许 HTT
 
 ### `GET /api/v1/admin/config`
 
-查看当前同步开关、消息保留期限、敏感词配置数量和运行模式，不返回 Token 或敏感配置值。
+查看当前同步开关、消息保留期限、敏感词和允许部落配置数量、运行模式，不返回 Token 或敏感配置值。
+
+### `GET /api/v1/admin/outbox/failed`
+
+查看失败投递的错误原因和对应消息，便于 OneBot 联调排障。
+
+### `GET /api/v1/admin/audit`
+
+查看同步开关、失败重试和历史清理等管理员操作记录。不会记录 Token。
 
 ## 测试
 
@@ -132,11 +140,14 @@ pytest -q
 - OCR 识别规则需要随着游戏 UI 更新维护；服务端的队列、去重和重试逻辑不依赖具体 OCR 实现。
 - 当前 Android OCR 默认裁剪屏幕下方 55% 区域，真机联调时需要确认聊天框位置并校准比例。
 - 可通过 `BLOCKED_TERMS` 配置逗号分隔的拦截词；消息会在写入数据库前被拒绝。
+- 可通过 `ALLOWED_CLAN_IDS` 限制采集 Token 只能提交指定部落；生产环境建议配置该项。
 - 采集接口默认每个来源 IP 每分钟最多接受 120 条消息，可通过 `COLLECTOR_RATE_LIMIT_PER_MINUTE` 调整。
 
 ## Android 采集器
 
-`android-collector/` 提供 Kotlin AccessibilityService + Android 11+ 截图 OCR 示例。两条路径使用相同 HTTP 协议、本地队列和去重逻辑；OCR 默认识别屏幕下方区域，并可在应用内关闭。请阅读 [docs/android-collector.md](docs/android-collector.md)；实际聊天区域比例需要在真机上校准。
+`android-collector/` 提供 Kotlin AccessibilityService + Android 11+ 截图 OCR 采集器。工程包含 Gradle Wrapper 和 JVM 单元测试：在安装 Android Studio/JDK 17/Android SDK 35 后执行 `android-collector\\gradlew.bat test` 和 `android-collector\\gradlew.bat assembleDebug`。两条路径使用相同 HTTP 协议、本地队列和去重逻辑；OCR 默认识别屏幕下方区域，并可在应用内关闭。请阅读 [docs/android-collector.md](docs/android-collector.md)；实际聊天区域比例仍需要在真机上校准。
+
+OneBot 实例接通后，先只做状态检查：`python scripts/onebot_smoke_test.py --url http://127.0.0.1:3000`；确认 QQ 机器人已登录并加入目标群后，再显式加 `--send --group-id <群号>` 发送一条联调消息。
 
 部署和故障处理见 [docs/operations.md](docs/operations.md)。
 

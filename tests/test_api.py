@@ -9,6 +9,7 @@ def test_http_ingest_auth_dedup_and_dry_run(monkeypatch, tmp_path):
     monkeypatch.setenv("DRY_RUN", "true")
     monkeypatch.setenv("DB_PATH", str(tmp_path / "messages.db"))
     monkeypatch.setenv("POLL_INTERVAL_SECONDS", "0.01")
+    monkeypatch.delenv("ALLOWED_CLAN_IDS", raising=False)
 
     import app.main as main
 
@@ -63,4 +64,23 @@ def test_http_ingest_auth_dedup_and_dry_run(monkeypatch, tmp_path):
             headers={"X-Admin-Token": "admin-test"},
         )
         assert resumed.json() == {"sync_enabled": True}
+
+
+def test_http_rejects_clan_outside_allowlist(monkeypatch, tmp_path):
+    monkeypatch.setenv("COLLECTOR_TOKEN", "collector-test")
+    monkeypatch.setenv("ADMIN_TOKEN", "admin-test")
+    monkeypatch.setenv("DRY_RUN", "true")
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "messages.db"))
+    monkeypatch.setenv("ALLOWED_CLAN_IDS", "allowed-clan")
+
+    import app.main as main
+
+    main = importlib.reload(main)
+    with TestClient(main.app) as client:
+        response = client.post(
+            "/api/v1/messages",
+            json={"clan_id": "other-clan", "sender": "p", "content": "hello"},
+            headers={"X-Collector-Token": "collector-test"},
+        )
+        assert response.status_code == 403
 

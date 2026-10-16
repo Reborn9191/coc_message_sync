@@ -45,6 +45,12 @@ curl -X POST -H "X-Admin-Token: <ADMIN_TOKEN>" "http://127.0.0.1:8000/api/v1/adm
 curl -X POST -H "X-Admin-Token: <ADMIN_TOKEN>" "http://127.0.0.1:8000/api/v1/admin/maintenance/purge?retention_days=30"
 ```
 
+管理员操作审计：
+
+```powershell
+curl -H "X-Admin-Token: <ADMIN_TOKEN>" "http://127.0.0.1:8000/api/v1/admin/audit?limit=50"
+```
+
 在线备份 SQLite：
 
 ```powershell
@@ -66,4 +72,5 @@ curl -X POST -H "X-Admin-Token: <ADMIN_TOKEN>" `
 - `/api/v1/admin/*` 包含聊天内容和运维操作，建议仅绑定内网或通过 VPN 访问。
 - 不要把 `.env`、SQLite 数据库或 QQ Token 提交到版本库。
 - 设备端只采集获得授权的部落聊天区域。
+- 生产环境设置 `ALLOWED_CLAN_IDS`，避免采集 Token 被用于提交其他部落的伪造消息。
 

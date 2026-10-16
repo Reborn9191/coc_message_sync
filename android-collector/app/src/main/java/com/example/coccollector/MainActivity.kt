@@ -36,7 +36,7 @@ class MainActivity : Activity() {
         }
         val cropTop = EditText(this).apply {
             hint = "OCR 裁剪起始百分比（默认 45）"
-            setText(preferences.getInt("ocr_crop_top_percent", 45).toString())
+            setText(preferences.getInt("ocr_crop_top_percent", OcrCrop.DEFAULT_TOP_PERCENT).toString())
             setSingleLine(true)
             inputType = InputType.TYPE_CLASS_NUMBER
         }
@@ -54,7 +54,11 @@ class MainActivity : Activity() {
                     .putString("server_url", server.text.toString().trim())
                     .putString("collector_token", token.text.toString().trim())
                     .putString("clan_id", clan.text.toString().trim())
-                    .putInt("ocr_crop_top_percent", cropTop.text.toString().toIntOrNull()?.coerceIn(0, 90) ?: 45)
+                    .putInt(
+                        "ocr_crop_top_percent",
+                        cropTop.text.toString().toIntOrNull()?.let(OcrCrop::clampTopPercent)
+                            ?: OcrCrop.DEFAULT_TOP_PERCENT,
+                    )
                     .apply()
                 Toast.makeText(this@MainActivity, "配置已保存", Toast.LENGTH_SHORT).show()
             }
@@ -64,7 +68,7 @@ class MainActivity : Activity() {
             setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
         }
         val note = TextView(this).apply {
-            text = "请先保存配置，再启用“CoC 聊天采集服务”。仅在获得部落成员同意后使用。\n\n如果当前游戏版本不提供可访问文本，服务不会产生消息，需要接入 OCR 采集器。"
+            text = "请先保存配置，再启用“CoC 聊天采集服务”。仅在获得部落成员同意后使用。\n\nOCR 校准：进入部落聊天并调整裁剪起始百分比，使预览区域只覆盖聊天气泡；通常从 45 开始，每次调整 5。校准后发送一条测试消息，并在服务端 /api/v1/admin/messages 确认只出现一次。\n\n如果当前游戏版本不提供可访问文本，服务会使用 Android 11+ 截图 OCR。"
             setPadding(24, 24, 24, 24)
         }
         setContentView(LinearLayout(this).apply {

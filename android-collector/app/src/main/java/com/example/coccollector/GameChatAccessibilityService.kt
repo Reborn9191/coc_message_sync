@@ -5,13 +5,15 @@ import android.accessibilityservice.AccessibilityService.ScreenshotResult
 import android.accessibilityservice.AccessibilityService.TakeScreenshotCallback
 import android.graphics.Bitmap
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import com.google.mlkit.vision.text.TextRecognition
-import org.json.JSONArray
+import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.StandardCharsets
@@ -22,10 +24,13 @@ import kotlin.math.pow
 
 class GameChatAccessibilityService : AccessibilityService() {
     private val executor: ExecutorService = Executors.newSingleThreadExecutor()
+    private val callbackExecutor = java.util.concurrent.Executor { command ->
+        Handler(Looper.getMainLooper()).post(command)
+    }
     private val preferences by lazy { getSharedPreferences("collector", MODE_PRIVATE) }
+    private val queue by lazy { CollectorQueue(this) }
     private val gamePackage = "com.supercell.clashofclans"
     private val queueLock = Any()
-    private val queueKey = "pending_payloads"
     private val recognizer by lazy {
         TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
     }
@@ -56,7 +61,7 @@ class GameChatAccessibilityService : AccessibilityService() {
         try {
             takeScreenshot(
                 Display.DEFAULT_DISPLAY,
-                mainExecutor,
+                callbackExecutor,
                 object : TakeScreenshotCallback {
                 override fun onSuccess(screenshot: ScreenshotResult) {
                     val hardwareBuffer = screenshot.hardwareBuffer
@@ -65,9 +70,11 @@ class GameChatAccessibilityService : AccessibilityService() {
                     if (full == null) return
                     val bitmap = full.copy(Bitmap.Config.ARGB_8888, false) ?: return
                     full.recycle()
-                    val cropPercent = preferences.getInt("ocr_crop_top_percent", 45).coerceIn(0, 90)
-                    val top = (bitmap.height * (cropPercent / 100f)).toInt().coerceIn(0, bitmap.height - 1)
-                    val crop = Bitmap.createBitmap(bitmap, 0, top, bitmap.width, bitmap.height - top)
+                    val cropPercent = preferences.getInt(
+                        "ocr_crop_top_percent",
+                        OcrCrop.DEFAULT_TOP_PERCENT,
+                    )
+                    val crop = OcrCrop.crop(bitmap, cropPercent)
                     bitmap.recycle()
                     recognizer.process(InputImage.fromBitmap(crop, 0))
                         .addOnSuccessListener { result ->
@@ -119,46 +126,16 @@ class GameChatAccessibilityService : AccessibilityService() {
 
     private fun enqueue(json: String) {
         synchronized(queueLock) {
-            val existing = readQueue()
-            val sourceId = try {
-                org.json.JSONObject(json).optString("source_message_id")
-            } catch (_: Exception) {
-                ""
-            }
-            if (sourceId.isNotEmpty()) {
-                for (index in 0 until existing.length()) {
-                    if (try { org.json.JSONObject(existing.optString(index)).optString("source_message_id") } catch (_: Exception) { "" } == sourceId) {
-                        return
-                    }
-                }
-            }
-            existing.put(json)
-            // A disconnected device must not grow without bound. The server's
-            // source ID still makes retries idempotent if a bubble is repeated.
-            while (existing.length() > 100) existing.remove(0)
-            preferences.edit().putString(queueKey, existing.toString()).commit()
+            val sourceId = try { JSONObject(json).optString("source_message_id") } catch (_: Exception) { "" }
+            if (sourceId.isNotEmpty()) queue.enqueue(sourceId, json)
         }
     }
 
     private fun drain(serverUrl: String, token: String) {
         while (true) {
-            val next = synchronized(queueLock) { readQueue().optString(0, "") }
-            if (next.isEmpty()) return
+            val next = synchronized(queueLock) { queue.peek() } ?: return
             if (!postWithRetry(serverUrl, token, next)) return
-            synchronized(queueLock) {
-                val queue = readQueue()
-                if (queue.length() > 0) queue.remove(0)
-                preferences.edit().putString(queueKey, queue.toString()).commit()
-            }
-        }
-    }
-
-    private fun readQueue(): JSONArray {
-        val raw = preferences.getString(queueKey, "[]") ?: "[]"
-        return try {
-            JSONArray(raw)
-        } catch (_: Exception) {
-            JSONArray()
+            synchronized(queueLock) { queue.removeHead() }
         }
     }
 
@@ -217,6 +194,7 @@ class GameChatAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         executor.shutdownNow()
+        queue.close()
         super.onDestroy()
     }
 }

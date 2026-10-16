@@ -31,6 +31,7 @@ class Settings:
     sync_enabled: bool = True
     retention_days: int = 30
     blocked_terms: tuple[str, ...] = ()
+    allowed_clan_ids: tuple[str, ...] = ()
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -57,5 +58,10 @@ class Settings:
                 term.strip().casefold()
                 for term in os.getenv("BLOCKED_TERMS", "").split(",")
                 if term.strip()
+            ),
+            allowed_clan_ids=tuple(
+                clan.strip()
+                for clan in os.getenv("ALLOWED_CLAN_IDS", "").split(",")
+                if clan.strip()
             ),
         )

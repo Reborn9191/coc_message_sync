@@ -58,6 +58,14 @@ class Database:
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS audit_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event TEXT NOT NULL,
+                    actor TEXT NOT NULL,
+                    detail TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
                 """
             )
             connection.execute(
@@ -239,6 +247,37 @@ class Database:
                 JOIN deliveries d ON d.message_id = m.id
                 ORDER BY m.id DESC LIMIT ?
                 """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def failed_deliveries(self, limit: int = 50) -> list[dict[str, object]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT d.id AS delivery_id, d.message_id, d.attempts,
+                       d.last_error, d.next_attempt_at,
+                       m.clan_id, m.sender, m.content, m.created_at
+                FROM deliveries d
+                JOIN messages m ON m.id = d.message_id
+                WHERE d.status='failed'
+                ORDER BY d.id DESC LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def record_audit(self, event: str, actor: str, detail: str) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                "INSERT INTO audit_events(event, actor, detail, created_at) VALUES (?, ?, ?, ?)",
+                (event[:100], actor[:200], detail[:500], iso(datetime.now(timezone.utc))),
+            )
+
+    def recent_audit(self, limit: int = 50) -> list[dict[str, object]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT id, event, actor, detail, created_at FROM audit_events ORDER BY id DESC LIMIT ?",
                 (limit,),
             ).fetchall()
         return [dict(row) for row in rows]
