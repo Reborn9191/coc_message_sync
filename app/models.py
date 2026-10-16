@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Optional
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 def utc_now() -> datetime:
@@ -20,13 +20,13 @@ class IncomingMessage(BaseModel):
     source: str = Field(default="android_ocr", min_length=1, max_length=40)
     source_message_id: Optional[str] = Field(default=None, max_length=200)
 
-    @validator("clan_id", "sender", "content", "source", "source_message_id", pre=True)
+    @field_validator("clan_id", "sender", "content", "source", "source_message_id", mode="before")
     def strip_text(cls, value):
         if value is None:
             return value
         return str(value).strip()
 
-    @validator("content")
+    @field_validator("content")
     def reject_control_content(cls, value: str) -> str:
         # Keep line breaks (they are useful in chat), but reject invisible
         # control characters that can confuse QQ clients or log processors.
@@ -45,3 +45,9 @@ class HealthResponse(BaseModel):
     status: str
     dry_run: bool
     qq_configured: bool
+
+
+class ReadyResponse(BaseModel):
+    status: str
+    mode: str
+    qq: dict[str, object] | None = None

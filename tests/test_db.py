@@ -27,7 +27,7 @@ def test_message_is_deduplicated_and_can_be_sent(tmp_path):
 
     assert first == (1, False)
     assert duplicate == (1, True)
-    rows = db.claim_pending(observed_at)
+    rows = db.claim_pending(datetime.now(timezone.utc))
     assert len(rows) == 1
     db.mark_sent(rows[0]["delivery_id"], observed_at)
     assert db.counts() == {"sent": 1}
@@ -45,7 +45,7 @@ def test_failed_delivery_is_retried_then_marked_terminal(tmp_path):
         source="test",
         source_message_id="bubble-1",
     )
-    row = db.claim_pending(observed_at)[0]
+    row = db.claim_pending(datetime.now(timezone.utc))[0]
     db.mark_failed(
         row["delivery_id"],
         error="temporary",

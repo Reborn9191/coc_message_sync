@@ -16,6 +16,25 @@ $env:DRY_RUN = "true"
 uvicorn app.main:app --reload
 ```
 
+也可以使用项目脚本自动准备环境：
+
+```powershell
+.\scripts\setup.ps1
+$env:COLLECTOR_TOKEN = "local-test-token"
+$env:ADMIN_TOKEN = "local-admin-token"
+.\scripts\start-server.ps1
+```
+
+如果 PowerShell 禁止执行本地脚本，可只对当前进程放开：
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+```
+
+终端工具若提示无法启动辅助进程，请在 Codex 中允许“提升权限”后重试；这属于运行环境权限问题，不是项目代码问题。
+
+完整说明见 [终端环境配置](docs/terminal-environment.md)。若 PowerShell 执行策略受限，可使用 `scripts\start-server.cmd`。
+
 检查服务：
 
 ```powershell
@@ -89,10 +108,13 @@ pytest -q
 - 必须征得部落成员同意，只采集部落聊天区域。
 - 请将 `COLLECTOR_TOKEN`、`ADMIN_TOKEN` 和 QQ Token 换成随机长字符串，并使用 HTTPS。
 - OCR 识别规则需要随着游戏 UI 更新维护；服务端的队列、去重和重试逻辑不依赖具体 OCR 实现。
+- 当前 Android OCR 默认裁剪屏幕下方 55% 区域，真机联调时需要确认聊天框位置并校准比例。
 - 采集接口默认每个来源 IP 每分钟最多接受 120 条消息，可通过 `COLLECTOR_RATE_LIMIT_PER_MINUTE` 调整。
 
 ## Android 采集器
 
-`android-collector/` 提供第一版 Kotlin AccessibilityService 示例。它只读取游戏无障碍树中可见文本，使用与服务端文档相同的 HTTP 协议，并在网络失败时进行 3 次短退避重试。请阅读 [docs/android-collector.md](docs/android-collector.md)；如果你的游戏版本无法暴露聊天文本，需要把采集层替换为截图/OCR，但无需修改服务端。
+`android-collector/` 提供 Kotlin AccessibilityService + Android 11+ 截图 OCR 示例。两条路径使用相同 HTTP 协议、本地队列和去重逻辑；OCR 默认识别屏幕下方区域，并可在应用内关闭。请阅读 [docs/android-collector.md](docs/android-collector.md)；实际聊天区域比例需要在真机上校准。
 
 部署和故障处理见 [docs/operations.md](docs/operations.md)。
+
+生产反向代理模板位于 `deploy/`。请使用 HTTPS，并将管理接口、指标和 `/readyz` 限制在内网或 VPN。

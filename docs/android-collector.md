@@ -6,9 +6,14 @@
 2. 点击“打开无障碍服务设置”，启用“CoC 聊天采集服务”。
 3. 打开游戏并进入部落聊天，观察服务端日志和 `/api/v1/admin/outbox`。
 
-这版只读取无障碍树中的文本，发送者暂记为 `unknown`。很多游戏版本使用画布绘制聊天，无法通过无障碍树读到内容；这时应保留相同的 HTTP 协议，替换成截图/OCR 采集器。示例服务会对文本做候选过滤，并用 30 秒时间桶生成 `source_message_id`，服务端还会再次去重。
+这版同时提供两条采集路径：
 
-构建要求：Android Studio、JDK 17 和 Android SDK 35。项目没有提交 Gradle Wrapper，请在 Android Studio 中打开 `android-collector/` 后直接 Sync/Run；生产环境建议使用专用设备和专用游戏账号，并把服务端配置为 HTTPS。
+- AccessibilityService：读取无障碍树文本；若界面没有暴露发送者，发送者会记为 `unknown`。
+- Android 11+ 截图 OCR：默认启用，每 1.5 秒最多识别一次屏幕下方 55% 区域，使用 ML Kit 中文模型；可在应用内关闭。
+
+文本解析已经抽成 `ChatTextParser`，两条路径共用过滤和发送者识别。OCR 的聊天区域比例需要按实际设备校准；如果游戏聊天不在屏幕下方，后续应把裁剪区域改为可配置。示例服务会用 30 秒时间桶生成 `source_message_id`，服务端还会再次去重。
+
+构建要求：Android Studio、JDK 17 和 Android SDK 35。项目没有提交 Gradle Wrapper，请在 Android Studio 中打开 `android-collector/` 后直接 Sync/Run；首次同步需要下载 ML Kit 中文识别依赖。生产环境建议使用专用设备和专用游戏账号，并把服务端配置为 HTTPS。
 
 服务端已经提供了稳定的采集接口，Android 端只需要把识别出的新聊天消息 POST 到：
 

@@ -1,8 +1,16 @@
 package com.example.coccollector
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityService.ScreenshotResult
+import android.accessibilityservice.AccessibilityService.TakeScreenshotCallback
+import android.graphics.Bitmap
+import android.os.Build
+import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
+import com.google.mlkit.vision.text.TextRecognition
 import org.json.JSONArray
 import java.net.HttpURLConnection
 import java.net.URL
@@ -11,12 +19,17 @@ import java.security.MessageDigest
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.math.pow
+
 class GameChatAccessibilityService : AccessibilityService() {
     private val executor: ExecutorService = Executors.newSingleThreadExecutor()
     private val preferences by lazy { getSharedPreferences("collector", MODE_PRIVATE) }
     private val gamePackage = "com.supercell.clashofclans"
     private val queueLock = Any()
     private val queueKey = "pending_payloads"
+    private val recognizer by lazy {
+        TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
+    }
+    @Volatile private var lastOcrAt = 0L
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null || event.packageName?.toString() != gamePackage) return
@@ -29,9 +42,42 @@ class GameChatAccessibilityService : AccessibilityService() {
         val candidates = mutableSetOf<String>()
         collectText(root, candidates)
         candidates
-            .filter { looksLikeChatText(it) }
-            .mapNotNull { parseChatEntry(it) }
-            .forEach { entry -> submit(entry.first, entry.second) }
+            .flatMap { ChatTextParser.parse(it) }
+            .forEach { entry -> submit(entry.sender, entry.content) }
+        requestOcrIfEnabled()
+    }
+
+    private fun requestOcrIfEnabled() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        if (!preferences.getBoolean("ocr_enabled", true)) return
+        val now = System.currentTimeMillis()
+        if (now - lastOcrAt < 1_500L) return
+        lastOcrAt = now
+        takeScreenshot(
+            Display.DEFAULT_DISPLAY,
+            mainExecutor,
+            object : TakeScreenshotCallback {
+                override fun onSuccess(screenshot: ScreenshotResult) {
+                    val hardwareBuffer = screenshot.hardwareBuffer
+                    val full = Bitmap.wrapHardwareBuffer(hardwareBuffer, screenshot.colorSpace)
+                    hardwareBuffer.close()
+                    if (full == null) return
+                    val bitmap = full.copy(Bitmap.Config.ARGB_8888, false) ?: return
+                    full.recycle()
+                    val top = (bitmap.height * 0.45f).toInt().coerceIn(0, bitmap.height - 1)
+                    val crop = Bitmap.createBitmap(bitmap, 0, top, bitmap.width, bitmap.height - top)
+                    bitmap.recycle()
+                    recognizer.process(InputImage.fromBitmap(crop, 0))
+                        .addOnSuccessListener { result ->
+                            ChatTextParser.parse(result.text)
+                                .forEach { entry -> submit(entry.sender, entry.content) }
+                        }
+                        .addOnCompleteListener { crop.recycle() }
+                }
+
+                override fun onFailure(errorCode: Int) = Unit
+            },
+        )
     }
 
     private fun collectText(node: AccessibilityNodeInfo, result: MutableSet<String>) {
@@ -43,24 +89,6 @@ class GameChatAccessibilityService : AccessibilityService() {
                 child.recycle()
             }
         }
-    }
-
-    private fun looksLikeChatText(value: String): Boolean {
-        if (value.length !in 1..500) return false
-        if (value.startsWith("部落") || value.startsWith("设置") || value.startsWith("攻击")) return false
-        return value.any { it.isLetterOrDigit() || it in '\u4e00'..'\u9fff' }
-    }
-
-    private fun parseChatEntry(value: String): Pair<String, String>? {
-        val normalized = value.replace("\u0000", "").trim()
-        if (normalized.isEmpty()) return null
-        val separator = normalized.indexOfAny(charArrayOf('：', ':'))
-        if (separator in 1..39) {
-            val sender = normalized.substring(0, separator).trim()
-            val content = normalized.substring(separator + 1).trim()
-            if (sender.isNotEmpty() && content.isNotEmpty()) return sender to content
-        }
-        return "unknown" to normalized
     }
 
     private fun submit(sender: String, content: String) {

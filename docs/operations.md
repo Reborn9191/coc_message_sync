@@ -14,6 +14,17 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 先访问 `/healthz`。只有 `qq_configured=true` 且 `dry_run=false` 时，才表示服务已配置真实 QQ 投递。
 
+## 生产 HTTPS
+
+不要把 Uvicorn 的 8000 端口直接暴露到公网。`deploy/Caddyfile.example` 和 `deploy/nginx.example.conf` 提供反向代理模板：
+
+- Android 设备只需要访问 `/api/v1/messages`；
+- `/api/v1/admin/*`、`/metrics`、`/readyz` 应限制在内网或 VPN；
+- 使用 Caddy 时由 Caddy 自动申请和续期证书；
+- 使用 Nginx 时需自行配置 Let's Encrypt 证书续期。
+
+`/healthz` 只表示服务进程可用；`/readyz` 在 `DRY_RUN=false` 时还会检查 OneBot 的 `get_status`。
+
 ## 日常检查
 
 ```powershell

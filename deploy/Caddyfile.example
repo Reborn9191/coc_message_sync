@@ -1,0 +1,22 @@
+# Copy to Caddyfile and replace bridge.example.com.
+# Caddy automatically obtains and renews an HTTPS certificate.
+bridge.example.com {
+    encode gzip
+
+    # Collector endpoint: expose only this path to the Android device.
+    handle /api/v1/messages {
+        reverse_proxy bridge:8000
+    }
+
+    # Keep admin APIs and metrics private. Prefer a VPN/private network; the
+    # matcher below is an additional network-level guard, not authentication.
+    @private remote_ip 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 127.0.0.1/32
+    handle @private {
+        reverse_proxy bridge:8000
+    }
+
+    handle {
+        respond "not found" 404
+    }
+}
+

@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse, Response
 
 from .config import Settings
 from .db import Database
-from .models import HealthResponse, IncomingMessage, IngestResponse
+from .models import HealthResponse, IncomingMessage, IngestResponse, ReadyResponse
 from .metrics import RuntimeMetrics
 from .qq import DryRunQQAdapter, OneBotAdapter
 from .service import DeliveryWorker
@@ -126,6 +126,20 @@ async def healthz() -> HealthResponse:
     )
 
 
+@app.get("/readyz", response_model=ReadyResponse)
+async def readyz() -> ReadyResponse:
+    if settings.dry_run:
+        return ReadyResponse(status="ok", mode="dry-run")
+    if not isinstance(adapter, OneBotAdapter):
+        raise HTTPException(status_code=503, detail="QQ adapter is not configured")
+    try:
+        qq_status = await adapter.check_status()
+    except Exception as exc:
+        logger.warning("OneBot readiness check failed: %s", exc)
+        raise HTTPException(status_code=503, detail="OneBot is unavailable") from exc
+    return ReadyResponse(status="ok", mode="onebot", qq=qq_status)
+
+
 @app.post(
     "/api/v1/messages",
     response_model=IngestResponse,
@@ -156,7 +170,7 @@ async def ingest_message(payload: IncomingMessage) -> JSONResponse:
     )
     return JSONResponse(
         status_code=status.HTTP_200_OK if duplicate else status.HTTP_202_ACCEPTED,
-        content=result.dict(),
+        content=result.model_dump(),
     )
 
 

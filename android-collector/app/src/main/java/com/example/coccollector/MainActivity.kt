@@ -9,6 +9,7 @@ import android.text.InputType
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 
@@ -32,6 +33,13 @@ class MainActivity : Activity() {
             hint = "部落 ID 或名称"
             setText(preferences.getString("clan_id", ""))
             setSingleLine(true)
+        }
+        val ocr = Switch(this).apply {
+            text = "启用截图 OCR（Android 11+）"
+            isChecked = preferences.getBoolean("ocr_enabled", true)
+            setOnCheckedChangeListener { _, checked ->
+                preferences.edit().putBoolean("ocr_enabled", checked).apply()
+            }
         }
         val save = Button(this).apply {
             text = "保存配置"
@@ -58,6 +66,7 @@ class MainActivity : Activity() {
             addView(server)
             addView(token)
             addView(clan)
+            addView(ocr)
             addView(save)
             addView(settings)
             addView(note)
