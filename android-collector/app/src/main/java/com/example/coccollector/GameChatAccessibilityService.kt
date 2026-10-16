@@ -53,10 +53,11 @@ class GameChatAccessibilityService : AccessibilityService() {
         val now = System.currentTimeMillis()
         if (now - lastOcrAt < 1_500L) return
         lastOcrAt = now
-        takeScreenshot(
-            Display.DEFAULT_DISPLAY,
-            mainExecutor,
-            object : TakeScreenshotCallback {
+        try {
+            takeScreenshot(
+                Display.DEFAULT_DISPLAY,
+                mainExecutor,
+                object : TakeScreenshotCallback {
                 override fun onSuccess(screenshot: ScreenshotResult) {
                     val hardwareBuffer = screenshot.hardwareBuffer
                     val full = Bitmap.wrapHardwareBuffer(hardwareBuffer, screenshot.colorSpace)
@@ -64,7 +65,8 @@ class GameChatAccessibilityService : AccessibilityService() {
                     if (full == null) return
                     val bitmap = full.copy(Bitmap.Config.ARGB_8888, false) ?: return
                     full.recycle()
-                    val top = (bitmap.height * 0.45f).toInt().coerceIn(0, bitmap.height - 1)
+                    val cropPercent = preferences.getInt("ocr_crop_top_percent", 45).coerceIn(0, 90)
+                    val top = (bitmap.height * (cropPercent / 100f)).toInt().coerceIn(0, bitmap.height - 1)
                     val crop = Bitmap.createBitmap(bitmap, 0, top, bitmap.width, bitmap.height - top)
                     bitmap.recycle()
                     recognizer.process(InputImage.fromBitmap(crop, 0))
@@ -76,8 +78,14 @@ class GameChatAccessibilityService : AccessibilityService() {
                 }
 
                 override fun onFailure(errorCode: Int) = Unit
-            },
-        )
+                },
+            )
+        } catch (_: SecurityException) {
+            // Some vendor Android builds disable screenshots for accessibility
+            // services. Accessibility text collection can continue normally.
+        } catch (_: IllegalStateException) {
+            // The service may be shutting down while a window event arrives.
+        }
     }
 
     private fun collectText(node: AccessibilityNodeInfo, result: MutableSet<String>) {
@@ -102,7 +110,7 @@ class GameChatAccessibilityService : AccessibilityService() {
             "\"clan_id\":${jsonString(clanId)}," +
             "\"sender\":${jsonString(sender)}," +
             "\"content\":${jsonString(content)}," +
-            "\"source\":\"android_accessibility\"," +
+            "\"source\":\"android_collector\"," +
             "\"source_message_id\":${jsonString(sourceId)}" +
             "}"
         enqueue(json)
@@ -112,6 +120,18 @@ class GameChatAccessibilityService : AccessibilityService() {
     private fun enqueue(json: String) {
         synchronized(queueLock) {
             val existing = readQueue()
+            val sourceId = try {
+                org.json.JSONObject(json).optString("source_message_id")
+            } catch (_: Exception) {
+                ""
+            }
+            if (sourceId.isNotEmpty()) {
+                for (index in 0 until existing.length()) {
+                    if (try { org.json.JSONObject(existing.optString(index)).optString("source_message_id") } catch (_: Exception) { "" } == sourceId) {
+                        return
+                    }
+                }
+            }
             existing.put(json)
             // A disconnected device must not grow without bound. The server's
             // source ID still makes retries idempotent if a bubble is repeated.

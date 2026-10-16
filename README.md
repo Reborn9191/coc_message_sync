@@ -83,7 +83,15 @@ QQ 机器人账号需要已经加入目标群；OneBot 适配器需要允许 HTT
 
 ### `GET /api/v1/admin/outbox`
 
-使用 `X-Admin-Token` 查看 `pending`、`sent`、`failed` 等投递状态数量。
+使用 `X-Admin-Token` 查看 `pending`、`sent`、`failed` 等投递状态数量，以及当前同步开关。
+
+### `POST /api/v1/admin/sync?enabled=false`
+
+暂停或恢复 QQ 投递。暂停时采集消息仍会写入队列，恢复后继续投递。
+
+### `POST /api/v1/admin/maintenance/purge?retention_days=30`
+
+删除超过保留期限的历史消息和对应投递记录。默认保留期限由 `MESSAGE_RETENTION_DAYS` 控制。
 
 ### `POST /api/v1/admin/outbox/retry?limit=100`
 
@@ -93,6 +101,10 @@ QQ 机器人账号需要已经加入目标群；OneBot 适配器需要允许 HTT
 
 管理员查看最近消息及其投递状态。接口受 `X-Admin-Token` 保护，不应暴露到公网。
 
+### `GET /api/v1/admin/config`
+
+查看当前同步开关、消息保留期限、敏感词配置数量和运行模式，不返回 Token 或敏感配置值。
+
 ## 测试
 
 安装依赖后运行：
@@ -100,6 +112,16 @@ QQ 机器人账号需要已经加入目标群；OneBot 适配器需要允许 HTT
 ```powershell
 pytest -q
 ```
+
+## 数据库备份
+
+服务运行时可以使用 SQLite 在线备份，不需要停止服务：
+
+```powershell
+.\scripts\backup-db.ps1
+```
+
+默认备份写入 `backups/`；请将该目录纳入主机备份策略，不要提交到 Git。
 
 ## 生产注意事项
 
@@ -109,6 +131,7 @@ pytest -q
 - 请将 `COLLECTOR_TOKEN`、`ADMIN_TOKEN` 和 QQ Token 换成随机长字符串，并使用 HTTPS。
 - OCR 识别规则需要随着游戏 UI 更新维护；服务端的队列、去重和重试逻辑不依赖具体 OCR 实现。
 - 当前 Android OCR 默认裁剪屏幕下方 55% 区域，真机联调时需要确认聊天框位置并校准比例。
+- 可通过 `BLOCKED_TERMS` 配置逗号分隔的拦截词；消息会在写入数据库前被拒绝。
 - 采集接口默认每个来源 IP 每分钟最多接受 120 条消息，可通过 `COLLECTOR_RATE_LIMIT_PER_MINUTE` 调整。
 
 ## Android 采集器

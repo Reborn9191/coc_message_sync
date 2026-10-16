@@ -51,4 +51,16 @@ def test_http_ingest_auth_dedup_and_dry_run(monkeypatch, tmp_path):
         )
         assert outbox.status_code == 200
         assert outbox.json()["counts"] == {"sent": 1}
+        assert outbox.json()["sync_enabled"] is True
+
+        paused = client.post(
+            "/api/v1/admin/sync?enabled=false",
+            headers={"X-Admin-Token": "admin-test"},
+        )
+        assert paused.json() == {"sync_enabled": False}
+        resumed = client.post(
+            "/api/v1/admin/sync?enabled=true",
+            headers={"X-Admin-Token": "admin-test"},
+        )
+        assert resumed.json() == {"sync_enabled": True}
 

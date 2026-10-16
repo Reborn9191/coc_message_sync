@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import sqlite3
 
 from app.db import Database
 
@@ -63,3 +64,28 @@ def test_failed_delivery_is_retried_then_marked_terminal(tmp_path):
         retry_base_seconds=0,
     )
     assert db.counts() == {"failed": 1}
+
+
+def test_sync_switch_and_retention_cleanup(tmp_path):
+    db = Database(tmp_path / "messages.db")
+    db.initialize(sync_enabled=False)
+    assert db.sync_enabled() is False
+    db.set_sync_enabled(True)
+    assert db.sync_enabled() is True
+
+    now = datetime.now(timezone.utc)
+    db.insert_message(
+        clan_id="clan",
+        sender="player",
+        content="old",
+        observed_at=now,
+        source="test",
+        source_message_id="old",
+    )
+    with db.connect() as connection:
+        connection.execute(
+            "UPDATE messages SET created_at=? WHERE source_message_id='old'",
+            ("2020-01-01T00:00:00+00:00",),
+        )
+    assert db.purge_old_messages(1) == 1
+    assert db.counts() == {}

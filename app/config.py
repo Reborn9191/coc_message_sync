@@ -28,6 +28,9 @@ class Settings:
     retry_base_seconds: int
     max_message_length: int
     collector_rate_limit_per_minute: int
+    sync_enabled: bool = True
+    retention_days: int = 30
+    blocked_terms: tuple[str, ...] = ()
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -47,5 +50,12 @@ class Settings:
             max_message_length=int(os.getenv("MAX_MESSAGE_LENGTH", "2000")),
             collector_rate_limit_per_minute=int(
                 os.getenv("COLLECTOR_RATE_LIMIT_PER_MINUTE", "120")
+            ),
+            sync_enabled=_bool_env("SYNC_ENABLED", True),
+            retention_days=max(0, int(os.getenv("MESSAGE_RETENTION_DAYS", "30"))),
+            blocked_terms=tuple(
+                term.strip().casefold()
+                for term in os.getenv("BLOCKED_TERMS", "").split(",")
+                if term.strip()
             ),
         )

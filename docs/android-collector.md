@@ -9,9 +9,9 @@
 这版同时提供两条采集路径：
 
 - AccessibilityService：读取无障碍树文本；若界面没有暴露发送者，发送者会记为 `unknown`。
-- Android 11+ 截图 OCR：默认启用，每 1.5 秒最多识别一次屏幕下方 55% 区域，使用 ML Kit 中文模型；可在应用内关闭。
+- Android 11+ 截图 OCR：默认启用，每 1.5 秒最多识别一次；默认从屏幕 45% 高度开始识别，可在应用内配置裁剪起始百分比或关闭 OCR，使用 ML Kit 中文模型。
 
-文本解析已经抽成 `ChatTextParser`，两条路径共用过滤和发送者识别。OCR 的聊天区域比例需要按实际设备校准；如果游戏聊天不在屏幕下方，后续应把裁剪区域改为可配置。示例服务会用 30 秒时间桶生成 `source_message_id`，服务端还会再次去重。
+文本解析已经抽成 `ChatTextParser`，两条路径共用过滤和发送者识别。OCR 的聊天区域比例需要按实际设备校准；应用中的“裁剪起始百分比”用于调整识别区域。示例服务会用 30 秒时间桶生成 `source_message_id`，服务端和 Android 本地队列都会再次去重。
 
 构建要求：Android Studio、JDK 17 和 Android SDK 35。项目没有提交 Gradle Wrapper，请在 Android Studio 中打开 `android-collector/` 后直接 Sync/Run；首次同步需要下载 ML Kit 中文识别依赖。生产环境建议使用专用设备和专用游戏账号，并把服务端配置为 HTTPS。
 

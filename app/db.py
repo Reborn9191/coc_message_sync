@@ -25,7 +25,7 @@ class Database:
         connection.execute("PRAGMA foreign_keys=ON")
         return connection
 
-    def initialize(self) -> None:
+    def initialize(self, sync_enabled: bool = True) -> None:
         with self.connect() as connection:
             connection.executescript(
                 """
@@ -53,12 +53,34 @@ class Database:
 
                 CREATE INDEX IF NOT EXISTS idx_deliveries_pending
                     ON deliveries(status, next_attempt_at);
+
+                CREATE TABLE IF NOT EXISTS runtime_settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
                 """
             )
-            # A process can be terminated while a delivery is being sent. It is
-            # safe to retry those messages after the next process starts.
+            connection.execute(
+                "INSERT OR IGNORE INTO runtime_settings(key, value) VALUES ('sync_enabled', ?)",
+                ("1" if sync_enabled else "0",),
+            )
             connection.execute(
                 "UPDATE deliveries SET status='pending' WHERE status='processing'"
+            )
+
+    def sync_enabled(self) -> bool:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT value FROM runtime_settings WHERE key='sync_enabled'"
+            ).fetchone()
+        return row is None or row["value"] == "1"
+
+    def set_sync_enabled(self, enabled: bool) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                "INSERT INTO runtime_settings(key, value) VALUES ('sync_enabled', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                ("1" if enabled else "0",),
             )
 
     @staticmethod
@@ -220,3 +242,21 @@ class Database:
                 (limit,),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def purge_old_messages(self, retention_days: int, limit: int = 1000) -> int:
+        if retention_days <= 0:
+            return 0
+        cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT id FROM messages WHERE created_at < ? ORDER BY id LIMIT ?",
+                (iso(cutoff), limit),
+            ).fetchall()
+            if not rows:
+                return 0
+            ids = [int(row["id"]) for row in rows]
+            placeholders = ",".join("?" for _ in ids)
+            connection.execute(
+                f"DELETE FROM messages WHERE id IN ({placeholders})", ids
+            )
+            return len(ids)

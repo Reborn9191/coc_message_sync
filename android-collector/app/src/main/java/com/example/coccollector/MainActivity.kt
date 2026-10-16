@@ -34,6 +34,12 @@ class MainActivity : Activity() {
             setText(preferences.getString("clan_id", ""))
             setSingleLine(true)
         }
+        val cropTop = EditText(this).apply {
+            hint = "OCR 裁剪起始百分比（默认 45）"
+            setText(preferences.getInt("ocr_crop_top_percent", 45).toString())
+            setSingleLine(true)
+            inputType = InputType.TYPE_CLASS_NUMBER
+        }
         val ocr = Switch(this).apply {
             text = "启用截图 OCR（Android 11+）"
             isChecked = preferences.getBoolean("ocr_enabled", true)
@@ -48,6 +54,7 @@ class MainActivity : Activity() {
                     .putString("server_url", server.text.toString().trim())
                     .putString("collector_token", token.text.toString().trim())
                     .putString("clan_id", clan.text.toString().trim())
+                    .putInt("ocr_crop_top_percent", cropTop.text.toString().toIntOrNull()?.coerceIn(0, 90) ?: 45)
                     .apply()
                 Toast.makeText(this@MainActivity, "配置已保存", Toast.LENGTH_SHORT).show()
             }
@@ -66,6 +73,7 @@ class MainActivity : Activity() {
             addView(server)
             addView(token)
             addView(clan)
+            addView(cropTop)
             addView(ocr)
             addView(save)
             addView(settings)

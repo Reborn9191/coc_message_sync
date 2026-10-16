@@ -32,6 +32,27 @@ curl -H "X-Admin-Token: <ADMIN_TOKEN>" http://127.0.0.1:8000/api/v1/admin/outbox
 curl -H "X-Admin-Token: <ADMIN_TOKEN>" http://127.0.0.1:8000/api/v1/admin/messages?limit=20
 ```
 
+暂停/恢复同步：
+
+```powershell
+curl -X POST -H "X-Admin-Token: <ADMIN_TOKEN>" "http://127.0.0.1:8000/api/v1/admin/sync?enabled=false"
+curl -X POST -H "X-Admin-Token: <ADMIN_TOKEN>" "http://127.0.0.1:8000/api/v1/admin/sync?enabled=true"
+```
+
+定期清理历史数据：
+
+```powershell
+curl -X POST -H "X-Admin-Token: <ADMIN_TOKEN>" "http://127.0.0.1:8000/api/v1/admin/maintenance/purge?retention_days=30"
+```
+
+在线备份 SQLite：
+
+```powershell
+.\scripts\backup-db.ps1
+```
+
+建议每天至少备份一次，并定期验证备份文件可以被 SQLite 打开。备份包含消息内容和投递记录，应使用与正式数据库相同的访问控制和加密策略。
+
 如果 QQ 机器人短暂掉线，恢复后执行：
 
 ```powershell

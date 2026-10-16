@@ -14,6 +14,7 @@ from .config import Settings
 from .db import Database
 from .models import HealthResponse, IncomingMessage, IngestResponse, ReadyResponse
 from .metrics import RuntimeMetrics
+from .policy import blocked_term
 from .qq import DryRunQQAdapter, OneBotAdapter
 from .service import DeliveryWorker
 
@@ -82,7 +83,7 @@ async def lifespan(_: FastAPI):
             raise RuntimeError(
                 "DRY_RUN=false requires: " + ", ".join(missing)
             )
-    database.initialize()
+    database.initialize(settings.sync_enabled)
     await worker.start()
     yield
     await worker.stop()
@@ -148,6 +149,8 @@ async def readyz() -> ReadyResponse:
 async def ingest_message(payload: IncomingMessage) -> JSONResponse:
     if len(payload.content) > settings.max_message_length:
         raise HTTPException(status_code=422, detail="content is too long")
+    if blocked_term(payload.content, settings.blocked_terms):
+        raise HTTPException(status_code=422, detail="content rejected by message policy")
     message_id, duplicate = await asyncio.to_thread(
         database.insert_message,
         clan_id=payload.clan_id,
@@ -176,7 +179,27 @@ async def ingest_message(payload: IncomingMessage) -> JSONResponse:
 
 @app.get("/api/v1/admin/outbox", dependencies=[Depends(require_admin_token)])
 async def outbox_status() -> dict[str, object]:
-    return {"counts": await asyncio.to_thread(database.counts)}
+    return {
+        "counts": await asyncio.to_thread(database.counts),
+        "sync_enabled": await asyncio.to_thread(database.sync_enabled),
+    }
+
+
+@app.post("/api/v1/admin/sync", dependencies=[Depends(require_admin_token)])
+async def set_sync(enabled: bool = Query(...)) -> dict[str, object]:
+    await asyncio.to_thread(database.set_sync_enabled, enabled)
+    if enabled:
+        worker.notify()
+    return {"sync_enabled": enabled}
+
+
+@app.post("/api/v1/admin/maintenance/purge", dependencies=[Depends(require_admin_token)])
+async def purge_messages(
+    retention_days: int | None = Query(default=None, ge=1, le=3650),
+    limit: int = Query(default=1000, ge=1, le=10000),
+) -> dict[str, int]:
+    days = settings.retention_days if retention_days is None else retention_days
+    return {"deleted": await asyncio.to_thread(database.purge_old_messages, days, limit)}
 
 
 @app.post("/api/v1/admin/outbox/retry", dependencies=[Depends(require_admin_token)])
@@ -194,6 +217,16 @@ async def recent_messages(
     limit: int = Query(default=20, ge=1, le=100),
 ) -> dict[str, object]:
     return {"messages": await asyncio.to_thread(database.recent_messages, limit)}
+
+
+@app.get("/api/v1/admin/config", dependencies=[Depends(require_admin_token)])
+async def admin_config() -> dict[str, object]:
+    return {
+        "sync_enabled": await asyncio.to_thread(database.sync_enabled),
+        "retention_days": settings.retention_days,
+        "blocked_terms_configured": len(settings.blocked_terms),
+        "mode": "dry-run" if settings.dry_run else "onebot",
+    }
 
 
 @app.get("/metrics", include_in_schema=False)

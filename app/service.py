@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import datetime, timezone
 
 from .config import Settings
@@ -27,6 +28,7 @@ class DeliveryWorker:
         self._wake = asyncio.Event()
         self._stop = asyncio.Event()
         self._task: asyncio.Task | None = None
+        self._next_maintenance_at = 0.0
 
     async def start(self) -> None:
         self._task = asyncio.create_task(self._run(), name="qq-delivery-worker")
@@ -42,6 +44,21 @@ class DeliveryWorker:
 
     async def _run(self) -> None:
         while not self._stop.is_set():
+            now_monotonic = time.monotonic()
+            if now_monotonic >= self._next_maintenance_at:
+                await asyncio.to_thread(
+                    self.db.purge_old_messages,
+                    self.settings.retention_days,
+                    1000,
+                )
+                self._next_maintenance_at = now_monotonic + 3600
+            if not self.db.sync_enabled():
+                self._wake.clear()
+                try:
+                    await asyncio.wait_for(self._wake.wait(), timeout=self.settings.poll_interval_seconds)
+                except asyncio.TimeoutError:
+                    pass
+                continue
             made_progress = False
             for row in self.db.claim_pending(datetime.now(timezone.utc)):
                 made_progress = True
